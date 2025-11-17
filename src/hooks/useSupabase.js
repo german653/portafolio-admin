@@ -13,15 +13,21 @@ export const useSupabase = () => {
   const getProfile = async () => {
     try {
       setLoading(true);
+      setError(null);
+      
       const { data, error } = await supabase
         .from('profile')
         .select('*')
+        .limit(1)
         .single();
 
-      if (error) throw error;
+      if (error && error.code !== 'PGRST116') {
+        // PGRST116 = no rows returned, no es un error crítico
+        throw error;
+      }
       
       setLoading(false);
-      return data;
+      return data || null;
     } catch (err) {
       console.error('Error al obtener perfil:', err);
       setError(err.message);
@@ -30,29 +36,43 @@ export const useSupabase = () => {
     }
   };
 
-  // Actualizar perfil
+  // Actualizar o crear perfil
   const updateProfile = async (profileData) => {
     try {
       setLoading(true);
+      setError(null);
       
       // Primero verificamos si existe un perfil
-      const { data: existingProfile } = await supabase
+      const { data: existingProfile, error: selectError } = await supabase
         .from('profile')
         .select('id')
+        .limit(1)
         .single();
 
       let result;
-      if (existingProfile) {
-        // Actualizar
+      
+      if (existingProfile && !selectError) {
+        // Actualizar perfil existente
         result = await supabase
           .from('profile')
-          .update(profileData)
-          .eq('id', existingProfile.id);
+          .update({
+            ...profileData,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingProfile.id)
+          .select()
+          .single();
       } else {
-        // Insertar nuevo
+        // Crear nuevo perfil
         result = await supabase
           .from('profile')
-          .insert([profileData]);
+          .insert([{
+            ...profileData,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          }])
+          .select()
+          .single();
       }
 
       if (result.error) throw result.error;
@@ -75,6 +95,8 @@ export const useSupabase = () => {
   const getProjects = async () => {
     try {
       setLoading(true);
+      setError(null);
+      
       const { data, error } = await supabase
         .from('projects')
         .select('*')
@@ -95,13 +117,21 @@ export const useSupabase = () => {
   // Subir imagen a Supabase Storage
   const uploadImage = async (file) => {
     try {
+      // Validar tamaño (máx 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        throw new Error('La imagen no debe superar los 5MB');
+      }
+
       const fileExt = file.name.split('.').pop();
       const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${fileExt}`;
-      const filePath = `projects/${fileName}`;
+      const filePath = `${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('project-images')
-        .upload(filePath, file);
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
       if (uploadError) throw uploadError;
 
@@ -120,16 +150,22 @@ export const useSupabase = () => {
   // Eliminar imagen de Supabase Storage
   const deleteImage = async (imageUrl) => {
     try {
-      // Extraer el path de la URL
+      if (!imageUrl || !imageUrl.includes('supabase')) {
+        return; // No es una imagen de Supabase
+      }
+
+      // Extraer el nombre del archivo de la URL
       const urlParts = imageUrl.split('/project-images/');
       if (urlParts.length > 1) {
-        const filePath = `projects/${urlParts[1]}`;
+        const fileName = urlParts[1].split('?')[0]; // Remover query params
         
         const { error } = await supabase.storage
           .from('project-images')
-          .remove([filePath]);
+          .remove([fileName]);
 
-        if (error) throw error;
+        if (error) {
+          console.error('Error al eliminar imagen:', error);
+        }
       }
     } catch (err) {
       console.error('Error al eliminar imagen:', err);
@@ -141,20 +177,25 @@ export const useSupabase = () => {
   const addProject = async (projectData, imageFile) => {
     try {
       setLoading(true);
+      setError(null);
       
-      let imageUrl = projectData.image;
-      
-      // Subir imagen si existe
-      if (imageFile) {
-        imageUrl = await uploadImage(imageFile);
+      if (!imageFile) {
+        throw new Error('Debes seleccionar una imagen para el proyecto');
       }
+
+      // Subir imagen
+      const imageUrl = await uploadImage(imageFile);
 
       const { error } = await supabase
         .from('projects')
         .insert([{
-          ...projectData,
+          title: projectData.title,
+          description: projectData.description,
           image: imageUrl,
+          demo_url: projectData.demoUrl, // Aquí está el cambio: demo_url
+          tags: projectData.tags || [],
           created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         }]);
 
       if (error) throw error;
@@ -165,6 +206,7 @@ export const useSupabase = () => {
       console.error('Error al agregar proyecto:', err);
       setError(err.message);
       setLoading(false);
+      alert(`Error: ${err.message}`);
       return false;
     }
   };
@@ -173,13 +215,14 @@ export const useSupabase = () => {
   const updateProject = async (projectId, projectData, imageFile) => {
     try {
       setLoading(true);
+      setError(null);
       
       let imageUrl = projectData.image;
       
       // Subir nueva imagen si existe
       if (imageFile) {
         // Eliminar imagen anterior si existe
-        if (projectData.image && projectData.image.includes('supabase')) {
+        if (projectData.image) {
           await deleteImage(projectData.image);
         }
         imageUrl = await uploadImage(imageFile);
@@ -188,9 +231,12 @@ export const useSupabase = () => {
       const { error } = await supabase
         .from('projects')
         .update({
-          ...projectData,
+          title: projectData.title,
+          description: projectData.description,
           image: imageUrl,
-          updated_at: new Date().toISOString(),
+          demo_url: projectData.demoUrl, // Aquí está el cambio: demo_url
+          tags: projectData.tags || [],
+          updated_at: new Date().toISOString()
         })
         .eq('id', projectId);
 
@@ -202,6 +248,7 @@ export const useSupabase = () => {
       console.error('Error al actualizar proyecto:', err);
       setError(err.message);
       setLoading(false);
+      alert(`Error: ${err.message}`);
       return false;
     }
   };
@@ -210,9 +257,10 @@ export const useSupabase = () => {
   const deleteProject = async (projectId, imageUrl) => {
     try {
       setLoading(true);
+      setError(null);
       
       // Eliminar imagen si existe
-      if (imageUrl && imageUrl.includes('supabase')) {
+      if (imageUrl) {
         await deleteImage(imageUrl);
       }
 
@@ -229,6 +277,7 @@ export const useSupabase = () => {
       console.error('Error al eliminar proyecto:', err);
       setError(err.message);
       setLoading(false);
+      alert(`Error: ${err.message}`);
       return false;
     }
   };

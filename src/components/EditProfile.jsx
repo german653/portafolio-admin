@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Save, Plus, X, CheckCircle } from 'lucide-react';
+import { Save, Plus, X, CheckCircle, AlertCircle } from 'lucide-react';
 import { useSupabase } from '../hooks/useSupabase';
 
 const EditProfile = () => {
@@ -15,10 +15,10 @@ const EditProfile = () => {
     instagram: '',
     email: '',
   });
-  const [profileId, setProfileId] = useState(null);
   const [newService, setNewService] = useState('');
   const [newSkill, setNewSkill] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   useEffect(() => {
     loadProfile();
@@ -27,8 +27,16 @@ const EditProfile = () => {
   const loadProfile = async () => {
     const profile = await getProfile();
     if (profile) {
-      setProfileData(profile);
-      setProfileId(profile.id);
+      setProfileData({
+        name: profile.name || '',
+        role: profile.role || '',
+        description: profile.description || '',
+        services: profile.services || [],
+        skills: profile.skills || [],
+        whatsapp: profile.whatsapp || '',
+        instagram: profile.instagram || '',
+        email: profile.email || '',
+      });
     }
   };
 
@@ -76,21 +84,22 @@ const EditProfile = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    let success = false;
+    setSaveSuccess(false);
+    setSaveError('');
 
-    if (profileId) {
-      success = await updateProfile(profileId, profileData);
-    } else {
-      success = await createProfile(profileData);
-      if (success) {
-        const profile = await getProfile();
-        if (profile) setProfileId(profile.id);
-      }
+    // Validación básica
+    if (!profileData.name || !profileData.role || !profileData.description) {
+      setSaveError('Por favor completa todos los campos obligatorios (*)');
+      return;
     }
+
+    const success = await updateProfile(profileData);
 
     if (success) {
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
+    } else {
+      setSaveError('Error al guardar los cambios. Intenta nuevamente.');
     }
   };
 
@@ -110,17 +119,28 @@ const EditProfile = () => {
               className="flex items-center gap-2 px-4 py-2 bg-green-500/10 border border-green-500/50 rounded-lg text-green-400"
             >
               <CheckCircle className="w-5 h-5" />
-              <span className="font-medium">Guardado</span>
+              <span className="font-medium">Guardado exitosamente</span>
             </motion.div>
           )}
         </div>
+
+        {saveError && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6 flex items-center gap-2 px-4 py-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-400"
+          >
+            <AlertCircle className="w-5 h-5" />
+            <span>{saveError}</span>
+          </motion.div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Nombre y Rol */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                Nombre Completo *
+                Nombre Completo <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
@@ -134,7 +154,7 @@ const EditProfile = () => {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-300 mb-2">
-                Rol / Título *
+                Rol / Título <span className="text-red-400">*</span>
               </label>
               <input
                 type="text"
@@ -151,7 +171,7 @@ const EditProfile = () => {
           {/* Descripción */}
           <div>
             <label className="block text-sm font-medium text-gray-300 mb-2">
-              Descripción / Bio *
+              Descripción / Bio <span className="text-red-400">*</span>
             </label>
             <textarea
               name="description"
@@ -177,7 +197,12 @@ const EditProfile = () => {
                 type="text"
                 value={newService}
                 onChange={(e) => setNewService(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddService())}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddService();
+                  }
+                }}
                 className="flex-1 px-4 py-3 bg-dark-bg border border-dark-border rounded-lg text-white focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all"
                 placeholder="Ej: Desarrollo de aplicaciones web personalizadas"
               />
@@ -222,7 +247,12 @@ const EditProfile = () => {
                 type="text"
                 value={newSkill}
                 onChange={(e) => setNewSkill(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddSkill())}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddSkill();
+                  }
+                }}
                 className="flex-1 px-4 py-3 bg-dark-bg border border-dark-border rounded-lg text-white focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all"
                 placeholder="Ej: React, Node.js, Python..."
               />
@@ -309,12 +339,21 @@ const EditProfile = () => {
             <motion.button
               type="submit"
               disabled={loading}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
+              whileHover={{ scale: loading ? 1 : 1.02 }}
+              whileTap={{ scale: loading ? 1 : 0.98 }}
               className="px-8 py-3 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg text-white font-semibold flex items-center gap-2 hover:shadow-lg hover:shadow-purple-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <Save className="w-5 h-5" />
-              {loading ? 'Guardando...' : 'Guardar Cambios'}
+              {loading ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Guardando...
+                </>
+              ) : (
+                <>
+                  <Save className="w-5 h-5" />
+                  Guardar Cambios
+                </>
+              )}
             </motion.button>
           </div>
         </form>

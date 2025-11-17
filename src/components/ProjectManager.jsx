@@ -43,6 +43,14 @@ const ProjectManager = ({ onUpdate }) => {
       // Validar tamaño (máx 5MB)
       if (file.size > 5 * 1024 * 1024) {
         alert('La imagen no debe superar los 5MB');
+        e.target.value = '';
+        return;
+      }
+      
+      // Validar tipo
+      if (!file.type.startsWith('image/')) {
+        alert('Por favor selecciona un archivo de imagen válido');
+        e.target.value = '';
         return;
       }
       
@@ -76,13 +84,13 @@ const ProjectManager = ({ onUpdate }) => {
     if (project) {
       setEditingProject(project);
       setFormData({
-        title: project.title,
-        description: project.description,
-        image: project.image,
-        demoUrl: project.demoUrl,
+        title: project.title || '',
+        description: project.description || '',
+        image: project.image || '',
+        demoUrl: project.demo_url || '',
         tags: project.tags || [],
       });
-      setImagePreview(project.image);
+      setImagePreview(project.image || null);
     } else {
       setEditingProject(null);
       setFormData({
@@ -110,12 +118,19 @@ const ProjectManager = ({ onUpdate }) => {
       demoUrl: '',
       tags: [],
     });
+    setNewTag('');
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (!imageFile && !formData.image) {
+    // Validación
+    if (!formData.title || !formData.description || !formData.demoUrl) {
+      alert('Por favor completa todos los campos obligatorios');
+      return;
+    }
+
+    if (!editingProject && !imageFile) {
       alert('Debes seleccionar una imagen para el proyecto');
       return;
     }
@@ -148,7 +163,9 @@ const ProjectManager = ({ onUpdate }) => {
       <div className="flex justify-between items-center mb-6">
         <div>
           <h2 className="text-2xl font-bold text-white">Gestión de Proyectos</h2>
-          <p className="text-gray-400 text-sm mt-1">Administra tu portafolio de proyectos</p>
+          <p className="text-gray-400 text-sm mt-1">
+            {projects.length} proyecto{projects.length !== 1 ? 's' : ''} en total
+          </p>
         </div>
         <motion.button
           onClick={() => handleOpenModal()}
@@ -183,18 +200,22 @@ const ProjectManager = ({ onUpdate }) => {
               animate={{ opacity: 1, scale: 1 }}
               className="bg-dark-surface border border-dark-border rounded-2xl overflow-hidden hover:border-purple-500/50 transition-all group"
             >
-              <div className="relative h-48 overflow-hidden">
+              <div className="relative h-48 overflow-hidden bg-dark-bg">
                 <img
                   src={project.image}
                   alt={project.title}
                   className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                  onError={(e) => {
+                    e.target.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="400" height="300"%3E%3Crect fill="%231a1a1a" width="400" height="300"/%3E%3Ctext fill="%23666" font-family="sans-serif" font-size="18" x="50%25" y="50%25" text-anchor="middle" dominant-baseline="middle"%3EImagen no disponible%3C/text%3E%3C/svg%3E';
+                  }}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-dark-bg via-dark-bg/50 to-transparent opacity-80"></div>
                 <a
-                  href={project.demoUrl}
+                  href={project.demo_url}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="absolute top-3 right-3 p-2 bg-dark-surface/80 backdrop-blur-sm border border-dark-border rounded-lg text-white hover:bg-purple-600 transition-colors"
+                  title="Ver demo"
                 >
                   <ExternalLink className="w-4 h-4" />
                 </a>
@@ -257,7 +278,7 @@ const ProjectManager = ({ onUpdate }) => {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-dark-surface border border-dark-border rounded-2xl p-6 max-w-2xl w-full my-8"
+              className="bg-dark-surface border border-dark-border rounded-2xl p-6 max-w-2xl w-full my-8 max-h-[90vh] overflow-y-auto"
             >
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-2xl font-bold text-white">
@@ -275,7 +296,7 @@ const ProjectManager = ({ onUpdate }) => {
                 {/* Título */}
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Título del Proyecto *
+                    Título del Proyecto <span className="text-red-400">*</span>
                   </label>
                   <input
                     type="text"
@@ -291,7 +312,7 @@ const ProjectManager = ({ onUpdate }) => {
                 {/* Descripción */}
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Descripción *
+                    Descripción <span className="text-red-400">*</span>
                   </label>
                   <textarea
                     name="description"
@@ -307,7 +328,8 @@ const ProjectManager = ({ onUpdate }) => {
                 {/* Imagen */}
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    Imagen del Proyecto * {editingProject && '(Deja vacío para mantener la actual)'}
+                    Imagen del Proyecto <span className="text-red-400">*</span>
+                    {editingProject && ' (Deja vacío para mantener la actual)'}
                   </label>
                   <label className="w-full px-4 py-3 bg-dark-bg border border-dashed border-dark-border hover:border-purple-500 rounded-lg text-gray-400 transition-all cursor-pointer flex items-center justify-center gap-2 group">
                     <Upload className="w-5 h-5 group-hover:text-purple-400 transition-colors" />
@@ -321,6 +343,9 @@ const ProjectManager = ({ onUpdate }) => {
                       className="hidden"
                     />
                   </label>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Formatos aceptados: JPG, PNG, GIF, WebP
+                  </p>
                   {imagePreview && (
                     <div className="mt-4 relative">
                       <img
@@ -328,16 +353,18 @@ const ProjectManager = ({ onUpdate }) => {
                         alt="Preview"
                         className="w-full h-48 object-cover rounded-lg"
                       />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setImageFile(null);
-                          setImagePreview(null);
-                        }}
-                        className="absolute top-2 right-2 p-2 bg-red-500/80 backdrop-blur-sm rounded-lg text-white hover:bg-red-600 transition-colors"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
+                      {imageFile && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setImageFile(null);
+                            setImagePreview(editingProject ? editingProject.image : null);
+                          }}
+                          className="absolute top-2 right-2 p-2 bg-red-500/80 backdrop-blur-sm rounded-lg text-white hover:bg-red-600 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -345,7 +372,7 @@ const ProjectManager = ({ onUpdate }) => {
                 {/* URL Demo */}
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-2">
-                    URL de Demo *
+                    URL de Demo <span className="text-red-400">*</span>
                   </label>
                   <input
                     type="url"
@@ -368,7 +395,12 @@ const ProjectManager = ({ onUpdate }) => {
                       type="text"
                       value={newTag}
                       onChange={(e) => setNewTag(e.target.value)}
-                      onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddTag();
+                        }
+                      }}
                       className="flex-1 px-4 py-3 bg-dark-bg border border-dark-border rounded-lg text-white focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all"
                       placeholder="Ej: React, Node.js, MongoDB..."
                     />
@@ -408,18 +440,26 @@ const ProjectManager = ({ onUpdate }) => {
                   <motion.button
                     type="submit"
                     disabled={loading}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    whileHover={{ scale: loading ? 1 : 1.02 }}
+                    whileTap={{ scale: loading ? 1 : 0.98 }}
+                    className="flex-1 px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg text-white font-semibold hover:shadow-lg hover:shadow-purple-500/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    {loading ? 'Guardando...' : editingProject ? 'Actualizar Proyecto' : 'Crear Proyecto'}
+                    {loading ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        Guardando...
+                      </>
+                    ) : (
+                      editingProject ? 'Actualizar Proyecto' : 'Crear Proyecto'
+                    )}
                   </motion.button>
                   <motion.button
                     type="button"
                     onClick={handleCloseModal}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    className="px-6 py-3 bg-dark-bg border border-dark-border rounded-lg text-white hover:bg-dark-surface transition-colors"
+                    disabled={loading}
+                    whileHover={{ scale: loading ? 1 : 1.02 }}
+                    whileTap={{ scale: loading ? 1 : 0.98 }}
+                    className="px-6 py-3 bg-dark-bg border border-dark-border rounded-lg text-white hover:bg-dark-surface transition-colors disabled:opacity-50"
                   >
                     Cancelar
                   </motion.button>
